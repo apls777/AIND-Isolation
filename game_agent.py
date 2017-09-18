@@ -34,8 +34,22 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
+    own_moves = game.get_legal_moves(player)
+    opp_moves = game.get_legal_moves(game.get_opponent(player))
+
+    # check if we already know the result of game
+    score = utility(player == game.active_player, len(own_moves), len(opp_moves))
+    if score:
+        return score
+
+    center_loc = (game.width - 1) / 2., (game.height - 1) / 2.
+    max_move_score = center_loc[0] ** 2 + center_loc[1] ** 2
+
+    own_loc = game.get_player_location(player)
+    own_score = weighted_moves_avg_score(own_moves, center_loc, own_loc, max_move_score, 1.8)
+    opp_score = len(opp_moves)
+
+    return (own_score - opp_score) / (own_score + opp_score)
 
 
 def custom_score_2(game, player):
@@ -60,8 +74,22 @@ def custom_score_2(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
+    own_moves = game.get_legal_moves(player)
+    opp_moves = game.get_legal_moves(game.get_opponent(player))
+
+    # check if we already know the result of game
+    score = utility(player == game.active_player, len(own_moves), len(opp_moves))
+    if score:
+        return score
+
+    center_loc = (game.width - 1) / 2., (game.height - 1) / 2.
+    max_move_score = center_loc[0] ** 2 + center_loc[1] ** 2
+
+    own_loc = game.get_player_location(player)
+    own_score = weighted_moves_avg_score(own_moves, center_loc, own_loc, max_move_score, 1.8)
+    opp_score = len(opp_moves)
+
+    return own_score - opp_score
 
 
 def custom_score_3(game, player):
@@ -86,8 +114,76 @@ def custom_score_3(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+
+    # check if we already know the result of game
+    score = utility(player == game.active_player, own_moves, opp_moves)
+    if score:
+        return score
+
+    return (own_moves - opp_moves) / (own_moves + opp_moves)
+
+
+def weighted_moves_avg_score(moves, center_loc, player_loc, max_move_score, a):
+    return len(moves) * (a - ((center_loc[0] - player_loc[0]) ** 2 + (center_loc[1] - player_loc[1]) ** 2) / max_move_score)
+
+
+def weighted_moves_score(moves, center_loc, max_move_score, a):
+    score = 0
+    for (row, col) in moves:
+        score += a - ((center_loc[0] - row) ** 2 + (center_loc[1] - col) ** 2) / max_move_score
+
+    return score
+
+
+def get_depth_moves_score(game, moves, depth, current_loc=(-1, -1)):
+    score = len(moves) * 65 ** depth
+    if depth == 0:
+        return score
+
+    for m in moves:
+        next_moves = get_moves(game, m)
+        # remove a move where we came from
+        if current_loc != (-1, -1):
+            next_moves.remove(current_loc)
+        # add depth score for each move
+        score += get_depth_moves_score(game, next_moves, depth - 1, m)
+
+    return score
+
+
+def get_moves(board, loc):
+    """Generate the list of possible moves for an L-shaped motion (like a
+    knight in chess).
+    """
+    r, c = loc
+    directions = [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
+                  (1, -2), (1, 2), (2, -1), (2, 1)]
+    valid_moves = [(r + dr, c + dc) for dr, dc in directions
+                   if board.move_is_legal((r + dr, c + dc))]
+
+    return valid_moves
+
+
+def utility(is_active_player, own_moves, opp_moves):
+    if is_active_player:
+        if own_moves == 0:
+            # my turn and I have no moves
+            return float('-inf')
+        elif opp_moves == 0:
+            # my turn and opponent has no moves
+            return float('inf')
+    else:
+        # opponent's turn and he has no moves
+        if opp_moves == 0:
+            return float('inf')
+        # opponent's turn and I have no moves
+        elif own_moves == 0:
+            return float('-inf')
+
+    return 0
+
 
 
 class IsolationPlayer:
@@ -212,9 +308,40 @@ class MinimaxPlayer(IsolationPlayer):
         if self.time_left() < self.TIMER_THRESHOLD:
             raise SearchTimeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        legal_moves = game.get_legal_moves()
+        if not legal_moves:
+            return -1, -1
 
+        _, move = max([(self.get_minimax_value(False, game.forecast_move(m), depth - 1), m) for m in legal_moves])
+
+        return move
+
+    def get_minimax_value(self, is_max_fn, board, depth):
+        # check that we have a time
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()
+
+        # get all legal moves
+        moves = board.get_legal_moves()
+        if not moves:
+            # if there are no moves, return game result
+            return board.utility(self)
+
+        # if we reached the last ply, return score for that board
+        if depth == 0:
+            return self.score(board, self)
+
+        # min and max functions are combined to not duplicate terminate logic
+        if is_max_fn:
+            v = -float('inf')
+            for m in moves:
+                v = max(v, self.get_minimax_value(False, board.forecast_move(m), depth - 1))
+        else:
+            v = float('inf')
+            for m in moves:
+                v = min(v, self.get_minimax_value(True, board.forecast_move(m), depth - 1))
+
+        return v
 
 class AlphaBetaPlayer(IsolationPlayer):
     """Game-playing agent that chooses a move using iterative deepening minimax
@@ -254,8 +381,17 @@ class AlphaBetaPlayer(IsolationPlayer):
         """
         self.time_left = time_left
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        move = (-1, -1)
+
+        depth = 1
+        try:
+            while True:
+                move = self.alphabeta(game, depth)
+                depth += 1
+        except SearchTimeout:
+            pass
+
+        return move
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf")):
         """Implement depth-limited minimax search with alpha-beta pruning as
@@ -305,5 +441,52 @@ class AlphaBetaPlayer(IsolationPlayer):
         if self.time_left() < self.TIMER_THRESHOLD:
             raise SearchTimeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        moves = game.get_legal_moves()
+        if not moves:
+            return -1, -1
+
+        v = -float('inf')
+        move = moves[0]
+        for m in moves:
+            v = max(v, self.get_minimax_value(False, game.forecast_move(m), depth - 1, alpha, beta))
+            if v >= beta:
+                move = m
+                break
+            if v > alpha:
+                alpha = v
+                move = m
+
+        return move
+
+    def get_minimax_value(self, is_max_fn, board, depth, a, b):
+        # check that we have a time
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()
+
+        # get all legal moves
+        moves = board.get_legal_moves()
+        if not moves:
+            # if there are no moves, return game result
+            return board.utility(self)
+
+        # if we reached the last ply, return score for that board
+        if depth == 0:
+            return self.score(board, self)
+
+        # min and max functions are combined to not duplicate terminate logic
+        if is_max_fn:
+            v = -float('inf')
+            for m in moves:
+                v = max(v, self.get_minimax_value(False, board.forecast_move(m), depth - 1, a, b))
+                if v >= b:
+                    return v
+                a = max(a, v)
+        else:
+            v = float('inf')
+            for m in moves:
+                v = min(v, self.get_minimax_value(True, board.forecast_move(m), depth - 1, a, b))
+                if v <= a:
+                    return v
+                b = min(b, v)
+
+        return v
